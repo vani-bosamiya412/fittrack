@@ -15,6 +15,7 @@ import '../Progress/progress.dart';
 import '../Workouts/workout.dart';
 import '../Workouts/workout_detail_screen.dart';
 import '../Trainer/trainer.dart';
+import '../services/step_services.dart';
 
 class FitnessDashboard extends StatefulWidget {
   const FitnessDashboard({super.key});
@@ -59,12 +60,13 @@ class _FitnessDashboardState extends State<FitnessDashboard>
 
   String _prefKey(String key, int userId) => "${key}_$userId";
   bool _isResettingDay = false;
+  int steps = 0;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-
+    _loadSteps();
     _startStepServiceIfNeeded();
     _loadUserBodyInfo();
     _loadWorkoutMinutes();
@@ -75,6 +77,18 @@ class _FitnessDashboardState extends State<FitnessDashboard>
     _scheduleNextMidnightReset();
 
     _initTracking();
+  }
+
+  Future<void> _loadSteps() async {
+    final int syncedSteps = await StepService.syncTodaySteps();
+
+    if (!mounted) return;
+
+    setState(() {
+      steps = syncedSteps;
+    });
+
+    _sendStepsToApi(syncedSteps);
   }
 
   void _scheduleNextMidnightReset() {
@@ -102,11 +116,24 @@ class _FitnessDashboardState extends State<FitnessDashboard>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) async {
     if (state == AppLifecycleState.resumed) {
-      _startStepServiceIfNeeded();
-      await _checkForDayChangeAndReset();
-      await _fetchTodayActivityFromServerAndMerge();
+      _loadSteps();
     }
   }
+
+  Future<void> _sendStepsToApi(int steps) async {
+    try {
+      await http.post(
+        Uri.parse("https://prakrutitech.xyz/vani/insert_acivities.php"),
+        body: {
+          "steps": steps.toString(),
+          "date": DateTime.now().toIso8601String().substring(0, 10),
+        },
+      );
+    } catch (_) {
+      // Fail silently; Google Fit remains source of truth
+    }
+  }
+
 
   @override
   void dispose() {
