@@ -94,7 +94,7 @@ class _FitnessDashboardState extends State<FitnessDashboard>
   void _scheduleNextMidnightReset() {
     _dailyCheckTimer?.cancel();
 
-    final now = DateTime.now(); // LOCAL timezone
+    final now = DateTime.now();
     final nextMidnight = DateTime(
       now.year,
       now.month,
