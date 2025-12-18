@@ -15,7 +15,6 @@ import '../Progress/progress.dart';
 import '../Workouts/workout.dart';
 import '../Workouts/workout_detail_screen.dart';
 import '../Trainer/trainer.dart';
-import '../services/step_services.dart';
 
 class FitnessDashboard extends StatefulWidget {
   const FitnessDashboard({super.key});
@@ -52,352 +51,111 @@ class _FitnessDashboardState extends State<FitnessDashboard>
   double distanceKm = 0.0;
 
   Timer? _rawReaderTimer;
-  Timer? _dailyCheckTimer;
+  Timer? _syncTimer;
   DateTime? _lastSynced;
   DateTime _lastChangeTime = DateTime.now();
 
   int _serverActivityIdForToday = 0;
 
   String _prefKey(String key, int userId) => "${key}_$userId";
-  bool _isResettingDay = false;
-  int steps = 0;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _loadSteps();
+
     _startStepServiceIfNeeded();
     _loadUserBodyInfo();
+    _startRawReader();
+
     _loadWorkoutMinutes();
     _loadUserName();
     _loadSuggestedWorkout();
 
-    _startRawReader();
-    _scheduleNextMidnightReset();
-
     _initTracking();
   }
 
-  Future<void> _loadSteps() async {
-    final int syncedSteps = await StepService.syncTodaySteps();
+  Future<void> _forceMidnightReset() async {
+    final prefs = await SharedPreferences.getInstance();
+    final userId = prefs.getInt('user_id') ?? -1;
+    if (userId <= 0) return;
 
-    if (!mounted) return;
+    final yesterday = DateTime.now()
+        .subtract(Duration(days: 1))
+        .toIso8601String()
+        .substring(0, 10);
 
-    setState(() {
-      steps = syncedSteps;
-    });
+    await _finalizeYesterdayOnServer(userId, yesterday);
 
-    _sendStepsToApi(syncedSteps);
-  }
-
-  void _scheduleNextMidnightReset() {
-    _dailyCheckTimer?.cancel();
-
-    final now = DateTime.now();
-    final nextMidnight = DateTime(
-      now.year,
-      now.month,
-      now.day + 1,
+    prefs.setString(
+      'last_step_date',
+      DateTime.now().toIso8601String().substring(0, 10),
     );
 
-    final duration = nextMidnight.difference(now);
+    prefs.setInt(
+      _prefKey('steps_base', userId),
+      prefs.getInt('raw_steps') ?? 0,
+    );
+    prefs.setInt(_prefKey('steps_value', userId), 0);
+    prefs.setDouble(_prefKey('calories_value', userId), 0.0);
+    prefs.setInt(_prefKey('active_value', userId), 0);
+    prefs.remove(_prefKey('activity_id', userId));
 
-    if (kDebugMode) {
-      print("Next midnight reset in ${duration.inMinutes} minutes");
-    }
-
-    _dailyCheckTimer = Timer(duration, () async {
-      await _checkForDayChangeAndReset();
-      _scheduleNextMidnightReset(); // schedule again for next day
+    setState(() {
+      stepCount = 0;
+      caloriesBurned = 0.0;
+      activeMinutes = 0;
+      distanceKm = 0.0;
     });
+
+    final today = DateTime.now().toIso8601String().substring(0, 10);
+
+    await http.post(
+      Uri.parse(_urlInsert),
+      body: {
+        'user_id': userId.toString(),
+        'steps': '0',
+        'distance': '0',
+        'duration': '0',
+        'calories': '0',
+        'activity_date': today,
+      },
+    );
   }
 
   @override
-  void didChangeAppLifecycleState(AppLifecycleState state) async {
+  Future<void> didChangeAppLifecycleState(AppLifecycleState state) async {
     if (state == AppLifecycleState.resumed) {
-      _loadSteps();
+      _startStepServiceIfNeeded();
+      _fetchTodayActivityFromServerAndMerge();
+    }
+    if (state == AppLifecycleState.resumed) {
+      final prefs = await SharedPreferences.getInstance();
+      final today = _todayKey();
+      final last = prefs.getString('last_step_date');
+
+      if (last != today) {
+        final raw = prefs.getInt('raw_steps') ?? 0;
+        await prefs.setInt(
+          _prefKey('steps_base', prefs.getInt('user_id')!),
+          raw,
+        );
+        await prefs.setString('last_step_date', today);
+
+        setState(() {
+          baseSteps = raw;
+          stepCount = 0;
+        });
+      }
     }
   }
-
-  Future<void> _sendStepsToApi(int steps) async {
-    try {
-      await http.post(
-        Uri.parse("https://prakrutitech.xyz/vani/insert_acivities.php"),
-        body: {
-          "steps": steps.toString(),
-          "date": DateTime.now().toIso8601String().substring(0, 10),
-        },
-      );
-    } catch (_) {
-      // Fail silently; Google Fit remains source of truth
-    }
-  }
-
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _rawReaderTimer?.cancel();
-    _dailyCheckTimer?.cancel();
+    _syncTimer?.cancel();
     super.dispose();
-  }
-
-  Future<void> _checkForDayChangeAndReset() async {
-    final prefs = await SharedPreferences.getInstance();
-    final userId = prefs.getInt('user_id') ?? -1;
-
-    if (userId <= 0) return;
-
-    final String today = _getTodayDateString();
-    final String lastDate = prefs.getString('last_step_date') ?? today;
-
-    final bool forceReset = prefs.getBool('force_day_reset') ?? false;
-
-    if (forceReset) {
-      await prefs.remove('force_day_reset');
-      if (kDebugMode) {
-        print("Forced reset due to system date/time change");
-      }
-    }
-
-    if (lastDate != today || forceReset) {
-      _isResettingDay = true;
-
-      await _finalizeYesterdayOnServer(userId, lastDate);
-
-      final rawSteps = prefs.getInt('raw_steps') ?? 0;
-
-      await prefs.setString('last_step_date', today);
-      await prefs.setInt(_prefKey('steps_base', userId), rawSteps);
-      await prefs.setInt(_prefKey('steps_value', userId), 0);
-      await prefs.setDouble(_prefKey('calories_value', userId), 0.0);
-      await prefs.setInt(_prefKey('active_value', userId), 0);
-
-      await _createInitialDailyRecord(userId, today);
-
-      if (mounted) {
-        setState(() {
-          stepCount = 0;
-          caloriesBurned = 0;
-          activeMinutes = 0;
-          baseSteps = rawSteps;
-        });
-      }
-
-      _isResettingDay = false;
-
-      if (kDebugMode) {
-        print("Day reset complete. Steps: 0, Base: $rawSteps");
-      }
-    }
-  }
-
-  Future<void> _createInitialDailyRecord(int userId, String date) async {
-    try {
-      await http.post(
-        Uri.parse(_urlInsert),
-        body: {
-          'user_id': userId.toString(),
-          'steps': '0',
-          'distance': '0',
-          'duration': '0',
-          'calories': '0',
-          'activity_date': date,
-        },
-      );
-    } catch (e) {
-      if (kDebugMode) {
-        print("Failed to create initial daily record: $e");
-      }
-    }
-  }
-
-  String _getTodayDateString() {
-    final now = DateTime.now().toLocal();
-    return "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
-  }
-
-  void _startRawReader() {
-    _rawReaderTimer?.cancel();
-
-    const readInterval = Duration(seconds: 1);
-    _rawReaderTimer = Timer.periodic(readInterval, (_) async {
-      try {
-        final dynamic result = await _platform.invokeMethod("getRawSteps");
-        int raw = 0;
-        if (result is int) {
-          raw = result;
-        } else if (result is String) {
-          raw = int.tryParse(result) ?? 0;
-        } else {
-          raw = (result ?? 0) as int;
-        }
-
-        await _processSteps(raw);
-      } catch (e) {
-        // Fallback to stored raw steps
-        try {
-          final prefs = await SharedPreferences.getInstance();
-          final stored = prefs.getInt('raw_steps') ?? 0;
-          await _processSteps(stored);
-        } catch (_) {}
-      }
-    });
-  }
-
-  Future<void> _processSteps(int rawSteps) async {
-    if (_isResettingDay) return;
-    final prefs = await SharedPreferences.getInstance();
-    final userId = prefs.getInt('user_id') ?? -1;
-
-    if (userId <= 0) return;
-
-    await prefs.setInt('raw_steps', rawSteps);
-
-    final String today = _getTodayDateString();
-    final String lastDate = prefs.getString('last_step_date') ?? today;
-
-    if (lastDate != today) {
-      return;
-    }
-
-    int base = prefs.getInt(_prefKey('steps_base', userId)) ?? rawSteps;
-
-    if (base > rawSteps || base == 0) {
-      base = rawSteps;
-      await prefs.setInt(_prefKey('steps_base', userId), base);
-    }
-
-    int todaySteps = rawSteps - base;
-    if (todaySteps < 0) todaySteps = 0;
-
-    int newActiveMinutes = calculateMoveMinutes(todaySteps);
-    double newCaloriesBurned = calculateCalories(todaySteps, newActiveMinutes);
-    double newDistanceKm = calculateDistance(todaySteps);
-
-    bool stepsChanged = (todaySteps - stepCount).abs() > 0;
-    bool timeElapsed = DateTime.now().difference(_lastChangeTime).inSeconds >= 1;
-
-    if (stepsChanged || timeElapsed) {
-      _lastChangeTime = DateTime.now();
-
-      await prefs.setInt(_prefKey('steps_value', userId), todaySteps);
-      await prefs.setDouble(_prefKey('calories_value', userId), newCaloriesBurned);
-      await prefs.setInt(_prefKey('active_value', userId), newActiveMinutes);
-      await prefs.setDouble(_prefKey('distance_value', userId), newDistanceKm);
-
-      if (mounted) {
-        setState(() {
-          stepCount = todaySteps;
-          activeMinutes = newActiveMinutes;
-          caloriesBurned = newCaloriesBurned;
-          distanceKm = newDistanceKm;
-        });
-      }
-
-      _syncToServer(userId, today);
-    }
-  }
-
-  Future<void> _syncToServer(int userId, String date) async {
-    try {
-      final double distance = calculateDistance(stepCount);
-
-      final response = await http.post(
-        Uri.parse(_urlInsert),
-        body: {
-          'user_id': userId.toString(),
-          'steps': stepCount.toString(),
-          'distance': distance.toStringAsFixed(2),
-          'duration': activeMinutes.toString(),
-          'calories': caloriesBurned.toStringAsFixed(1),
-          'activity_date': date,
-        },
-      ).timeout(Duration(seconds: 10));
-
-      if (response.statusCode == 200) {
-        _lastSynced = DateTime.now();
-
-        try {
-          final Map<String, dynamic> data = json.decode(response.body);
-          if (data['id'] != null) {
-            final prefs = await SharedPreferences.getInstance();
-            final int sid = int.tryParse(data['id'].toString()) ?? 0;
-            if (sid > 0) {
-              await prefs.setInt(_prefKey('activity_id', userId), sid);
-              _serverActivityIdForToday = sid;
-            }
-          }
-        } catch (e) {
-          // Ignore parse errors
-        }
-      }
-    } catch (e) {
-      // Silent fail - will retry
-    }
-  }
-
-  Future<void> _finalizeYesterdayOnServer(int userId, String date) async {
-    final prefs = await SharedPreferences.getInstance();
-
-    final int steps = prefs.getInt(_prefKey('steps_value', userId)) ?? 0;
-    final double calories = prefs.getDouble(_prefKey('calories_value', userId)) ?? 0.0;
-    final int active = prefs.getInt(_prefKey('active_value', userId)) ?? 0;
-    final double distance = calculateDistance(steps);
-
-    if (steps == 0 && calories == 0 && active == 0) {
-      return;
-    }
-
-    try {
-      await http.post(
-        Uri.parse(_urlInsert),
-        body: {
-          'user_id': userId.toString(),
-          'steps': steps.toString(),
-          'distance': distance.toStringAsFixed(2),
-          'duration': active.toString(),
-          'calories': calories.toStringAsFixed(1),
-          'activity_date': date,
-        },
-      );
-      if (kDebugMode) {
-        print("Saved yesterday's data ($date): $steps steps");
-      }
-    } catch (e) {
-      if (kDebugMode) {
-        print("Failed to save yesterday's data: $e");
-      }
-    }
-  }
-
-  Future<void> _initTracking() async {
-    final prefs = await SharedPreferences.getInstance();
-    final userId = prefs.getInt('user_id') ?? -1;
-
-    if (userId <= 0) return;
-
-    await _checkForDayChangeAndReset();
-
-    final savedSteps = prefs.getInt(_prefKey('steps_value', userId)) ?? 0;
-    final savedBase = prefs.getInt(_prefKey('steps_base', userId)) ?? 0;
-    final savedCalories = prefs.getDouble(_prefKey('calories_value', userId)) ?? 0.0;
-    final savedActive = prefs.getInt(_prefKey('active_value', userId)) ?? 0;
-
-    if (mounted) {
-      setState(() {
-        stepCount = savedSteps;
-        baseSteps = savedBase;
-        caloriesBurned = savedCalories;
-        activeMinutes = savedActive;
-        distanceKm = calculateDistance(savedSteps);
-      });
-    }
-
-    if (userId > 0) {
-      await _fetchTodayActivityFromServerAndMerge();
-    }
   }
 
   Future<void> _startStepServiceIfNeeded() async {
@@ -427,7 +185,8 @@ class _FitnessDashboardState extends State<FitnessDashboard>
   Future<void> _loadUserName() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
-      userName = prefs.getString('name') ?? prefs.getString('username') ?? 'Guest';
+      userName =
+          prefs.getString('name') ?? prefs.getString('username') ?? 'Guest';
     });
   }
 
@@ -466,6 +225,49 @@ class _FitnessDashboardState extends State<FitnessDashboard>
     }
   }
 
+  void _startRawReader() {
+    _rawReaderTimer?.cancel();
+
+    const readInterval = Duration(seconds: 1);
+    _rawReaderTimer = Timer.periodic(readInterval, (_) async {
+      try {
+        final dynamic result = await _platform.invokeMethod("getRawSteps");
+        int raw = 0;
+        if (result is int) {
+          raw = result;
+        } else if (result is String) {
+          raw = int.tryParse(result) ?? 0;
+        } else {
+          raw = (result ?? 0) as int;
+        }
+
+        final prefs = await SharedPreferences.getInstance();
+        final userId = prefs.getInt('user_id') ?? -1;
+
+        final todayKey = _todayKey();
+        await _applyRawStepsSafely(
+          raw,
+          prefs,
+          userId: userId,
+          todayKey: todayKey,
+        );
+      } catch (e) {
+        if (kDebugMode) print("getRawSteps error: $e");
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          final stored = prefs.getInt('raw_steps') ?? 0;
+          final userId = prefs.getInt('user_id') ?? -1;
+          await _applyRawStepsSafely(
+            stored,
+            prefs,
+            userId: userId,
+            todayKey: _todayKey(),
+          );
+        } catch (_) {}
+      }
+    });
+  }
+
   double calculateDistance(int steps) {
     double heightM = userHeight / 100;
     double stepLength = (userGender.toLowerCase() == "female")
@@ -491,6 +293,330 @@ class _FitnessDashboardState extends State<FitnessDashboard>
     return (steps / 100).floor();
   }
 
+  Future<void> _applyRawStepsSafely(
+    int rawSteps,
+    SharedPreferences prefs, {
+    required int userId,
+    required String todayKey,
+  }) async {
+    // Save raw steps for persistence
+    if (rawSteps > 0) {
+      await prefs.setInt('raw_steps', rawSteps);
+    } else {
+      rawSteps = prefs.getInt('raw_steps') ?? 0;
+    }
+
+    // Get today's date and compare with last saved date
+    final DateTime now = DateTime.now();
+    final String todayDate = now.toIso8601String().substring(0, 10);
+    final String lastSavedDate = prefs.getString('last_step_date') ?? todayDate;
+
+    if (lastSavedDate != todayDate) {
+      // FREEZE yesterday
+      await _finalizeYesterdayOnServer(userId, lastSavedDate);
+
+      // FORCE RESET
+      await prefs.setString('last_step_date', todayDate);
+
+      // IMPORTANT: set base to CURRENT rawSteps snapshot
+      await prefs.setInt(_prefKey('steps_base', userId), rawSteps);
+
+      await prefs.setInt(_prefKey('steps_value', userId), 0);
+      await prefs.setDouble(_prefKey('calories_value', userId), 0);
+      await prefs.setInt(_prefKey('active_value', userId), 0);
+      await prefs.remove(_prefKey('activity_id', userId));
+
+      if (mounted) {
+        setState(() {
+          baseSteps = rawSteps;
+          stepCount = 0;
+          caloriesBurned = 0.0;
+          activeMinutes = 0;
+          distanceKm = 0.0;
+        });
+      }
+
+      return; // DO NOT continue calculation
+    }
+
+    // CRITICAL: Check if it's a new day (after midnight)
+    final bool isNewDay = lastSavedDate != todayDate;
+
+    if (isNewDay) {
+      if (kDebugMode) print("NEW DAY DETECTED: $lastSavedDate -> $todayDate");
+
+      // Finalize yesterday's data on server
+      await _finalizeYesterdayOnServer(userId, lastSavedDate);
+
+      // Reset all daily values for the new day
+      await prefs.setString('last_step_date', todayDate);
+      await prefs.setInt(_prefKey('steps_base', userId), rawSteps);
+      await prefs.setInt(_prefKey('steps_value', userId), 0);
+      await prefs.setDouble(_prefKey('calories_value', userId), 0.0);
+      await prefs.setInt(_prefKey('active_value', userId), 0);
+      await prefs.remove(_prefKey('activity_id', userId));
+
+      // Insert initial record for today with 0 values
+      try {
+        await http.post(
+          Uri.parse(_urlInsert),
+          body: {
+            'user_id': userId.toString(),
+            'steps': '0',
+            'distance': '0',
+            'duration': '0',
+            'calories': '0',
+            'activity_date': todayDate,
+          },
+        );
+      } catch (e) {
+        if (kDebugMode) print("Initial insert error: $e");
+      }
+
+      // Update state to reflect reset
+      if (mounted) {
+        setState(() {
+          baseSteps = rawSteps;
+          stepCount = 0;
+          caloriesBurned = 0.0;
+          activeMinutes = 0;
+          distanceKm = 0.0;
+        });
+      }
+
+      return; // Early return since we've reset for new day
+    }
+
+    // Continue with normal processing for same day
+    int base = prefs.getInt(_prefKey('steps_base', userId)) ?? 0;
+
+    // If base is 0 or we need to recalibrate
+    if (base == 0 || rawSteps < base) {
+      base = rawSteps;
+      await prefs.setInt(_prefKey('steps_base', userId), base);
+    }
+
+    int todaySteps = rawSteps - base;
+    if (todaySteps < 0) todaySteps = 0;
+
+    // Calculate derived metrics
+    final int newActiveMinutes = calculateMoveMinutes(todaySteps);
+    final double newCaloriesBurned = calculateCalories(
+      todaySteps,
+      newActiveMinutes,
+    );
+    final double newDistanceKm = calculateDistance(todaySteps);
+
+    // Check if values changed significantly
+    final bool stepsChanged = (todaySteps - stepCount).abs() > 5;
+    final bool timeElapsed = now.difference(_lastChangeTime).inSeconds >= 2;
+
+    if (stepsChanged || timeElapsed) {
+      _lastChangeTime = now;
+
+      if (mounted) {
+        setState(() {
+          stepCount = todaySteps;
+          activeMinutes = newActiveMinutes;
+          caloriesBurned = newCaloriesBurned;
+          distanceKm = newDistanceKm;
+        });
+      }
+
+      // Save to local storage
+      await prefs.setInt(_prefKey('steps_value', userId), todaySteps);
+      await prefs.setDouble(
+        _prefKey('calories_value', userId),
+        newCaloriesBurned,
+      );
+      await prefs.setInt(_prefKey('active_value', userId), newActiveMinutes);
+      await prefs.setDouble(_prefKey('distance_value', userId), newDistanceKm);
+
+      // Trigger sync to server
+      _scheduleSyncToServer(userId);
+    }
+  }
+
+  Future<void> _finalizeYesterdayOnServer(
+    int userId,
+    String dateToFinalize,
+  ) async {
+    if (userId <= 0) return;
+
+    final prefs = await SharedPreferences.getInstance();
+
+    // Get yesterday's final values
+    final int steps = prefs.getInt(_prefKey('steps_value', userId)) ?? 0;
+    final double calories =
+        prefs.getDouble(_prefKey('calories_value', userId)) ?? 0.0;
+    final int active = prefs.getInt(_prefKey('active_value', userId)) ?? 0;
+    final double distance = calculateDistance(steps);
+
+    // Get the activity ID for yesterday
+    final int activityId = prefs.getInt(_prefKey('activity_id', userId)) ?? 0;
+
+    try {
+      if (activityId > 0) {
+        // Update existing record
+        await http.post(
+          Uri.parse('https://prakrutitech.xyz/vani/update_activities.php'),
+          body: {
+            'id': activityId.toString(),
+            'steps': steps.toString(),
+            'distance': distance.toStringAsFixed(2),
+            'duration': active.toString(),
+            'calories': calories.toStringAsFixed(1),
+            'activity_date': dateToFinalize,
+          },
+        );
+      } else {
+        // Insert new record
+        await http.post(
+          Uri.parse(_urlInsert),
+          body: {
+            'user_id': userId.toString(),
+            'steps': steps.toString(),
+            'distance': distance.toStringAsFixed(2),
+            'duration': active.toString(),
+            'calories': calories.toStringAsFixed(1),
+            'activity_date': dateToFinalize,
+          },
+        );
+      }
+
+      if (kDebugMode) print("Finalized yesterday ($dateToFinalize) on server");
+    } catch (e) {
+      if (kDebugMode) print("Failed to finalize yesterday: $e");
+
+      // Fallback: Try simple insert
+      try {
+        await http.post(
+          Uri.parse(_urlInsert),
+          body: {
+            'user_id': userId.toString(),
+            'steps': steps.toString(),
+            'distance': distance.toStringAsFixed(2),
+            'duration': active.toString(),
+            'calories': calories.toStringAsFixed(1),
+            'activity_date': dateToFinalize,
+          },
+        );
+      } catch (e2) {
+        if (kDebugMode) print("Fallback also failed: $e2");
+      }
+    }
+  }
+
+  void _scheduleSyncToServer(int userId) {
+    if (userId <= 0) return;
+
+    // Cancel existing timer
+    _syncTimer?.cancel();
+
+    // Create new timer that runs every 10 seconds
+    _syncTimer = Timer.periodic(Duration(seconds: 10), (_) async {
+      await _syncNowToServer(userId);
+    });
+
+    // Do immediate sync
+    _syncNowToServer(userId);
+  }
+
+  Future<void> _syncNowToServer(int userId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+
+      // Check if it's a new day
+      final String today = DateTime.now().toIso8601String().substring(0, 10);
+      final String lastDate = prefs.getString('last_step_date') ?? today;
+
+      if (lastDate != today) {
+        // Don't sync if day changed - let the reset handler deal with it
+        return;
+      }
+
+      // Get current values
+      final int localSteps = stepCount;
+      final double localCalories = caloriesBurned;
+      final int localActive = activeMinutes;
+      final double distance = calculateDistance(localSteps);
+
+      // Prepare request
+      final response = await http
+          .post(
+            Uri.parse(_urlInsert),
+            body: {
+              'user_id': userId.toString(),
+              'steps': localSteps.toString(),
+              'distance': distance.toStringAsFixed(2),
+              'duration': localActive.toString(),
+              'calories': localCalories.toStringAsFixed(1),
+              'activity_date': today,
+            },
+          )
+          .timeout(Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        _lastSynced = DateTime.now();
+
+        // Parse response to get activity ID
+        try {
+          final Map<String, dynamic> data = json.decode(response.body);
+          if (data['id'] != null) {
+            final int sid = int.tryParse(data['id'].toString()) ?? 0;
+            if (sid > 0) {
+              await prefs.setInt(_prefKey('activity_id', userId), sid);
+              _serverActivityIdForToday = sid;
+            }
+          }
+        } catch (e) {
+          // Ignore parse errors
+        }
+      }
+    } catch (e) {
+      // Silent fail - will retry on next sync
+    }
+  }
+
+  Future<Map?> _fetchActivityForUserDate(int userId, String date) async {
+    try {
+      final uri = Uri.parse("$_urlView?user_id=$userId");
+      final resp = await http.get(uri).timeout(Duration(seconds: 10));
+      if (resp.statusCode == 200) {
+        final data = json.decode(resp.body);
+
+        if (data is List) {
+          for (final e in data) {
+            if (e is Map &&
+                (e['activity_date'] ?? '').toString().startsWith(date)) {
+              return Map<String, dynamic>.from(e);
+            }
+          }
+        } else if (data is Map) {
+          final adate = (data['activity_date'] ?? '').toString();
+          if (adate.startsWith(date)) return Map<String, dynamic>.from(data);
+        } else {
+          if (resp.body.trim().startsWith("[")) {
+            final parsed = json.decode(resp.body);
+            if (parsed is List) {
+              for (final e in parsed) {
+                if (e is Map &&
+                    (e['activity_date'] ?? '').toString().startsWith(date)) {
+                  return Map<String, dynamic>.from(e);
+                }
+              }
+            }
+          }
+        }
+      } else {
+        // if (kDebugMode) print("fetchActivity HTTP ${resp.statusCode}");
+      }
+    } catch (e) {
+      // if (kDebugMode) print("fetchActivity error: $e");
+    }
+    return null;
+  }
+
   Future<void> _fetchTodayActivityFromServerAndMerge() async {
     final prefs = await SharedPreferences.getInstance();
     final userId = prefs.getInt('user_id') ?? -1;
@@ -499,12 +625,15 @@ class _FitnessDashboardState extends State<FitnessDashboard>
     final today = DateTime.now().toIso8601String().substring(0, 10);
     final serverActivity = await _fetchActivityForUserDate(userId, today);
 
-    final localSteps = prefs.getInt(_prefKey('steps_value', userId)) ?? stepCount;
+    final localSteps =
+        prefs.getInt(_prefKey('steps_value', userId)) ?? stepCount;
 
     if (serverActivity != null) {
       final serverSteps = int.tryParse(serverActivity['steps'].toString()) ?? 0;
-      final serverCalories = double.tryParse(serverActivity['calories'].toString()) ?? 0.0;
-      final serverActive = int.tryParse(serverActivity['duration'].toString()) ?? 0;
+      final serverCalories =
+          double.tryParse(serverActivity['calories'].toString()) ?? 0.0;
+      final serverActive =
+          int.tryParse(serverActivity['duration'].toString()) ?? 0;
       final serverId = int.tryParse(serverActivity['id'].toString()) ?? 0;
 
       if (serverId > 0) {
@@ -526,43 +655,81 @@ class _FitnessDashboardState extends State<FitnessDashboard>
           caloriesBurned = serverCalories;
           activeMinutes = serverActive;
         });
-      }
-    }
-
-    // Always sync current data
-    _syncToServer(userId, today);
-  }
-
-  Future<Map?> _fetchActivityForUserDate(int userId, String date) async {
-    try {
-      final uri = Uri.parse("$_urlView?user_id=$userId");
-      final resp = await http.get(uri).timeout(Duration(seconds: 10));
-      if (resp.statusCode == 200) {
-        final data = json.decode(resp.body);
-        if (data is List) {
-          for (final e in data) {
-            if (e is Map && (e['activity_date'] ?? '').toString().startsWith(date)) {
-              return Map<String, dynamic>.from(e);
-            }
-          }
-        } else if (data is Map) {
-          final adate = (data['activity_date'] ?? '').toString();
-          if (adate.startsWith(date)) return Map<String, dynamic>.from(data);
-        } else if (resp.body.trim().startsWith("[")) {
-          final parsed = json.decode(resp.body);
-          if (parsed is List) {
-            for (final e in parsed) {
-              if (e is Map && (e['activity_date'] ?? '').toString().startsWith(date)) {
-                return Map<String, dynamic>.from(e);
-              }
-            }
-          }
+      } else {
+        if (kDebugMode) {
+          // print(
+          //   "Local steps ($localSteps) >= server steps ($serverSteps): keeping local",
+          // );
         }
       }
-    } catch (e) {
-      // Ignore errors
+    } else {
+      if (kDebugMode) {
+        print("No server activity for today; will insert on sync");
+      }
     }
-    return null;
+
+    _scheduleSyncToServer(userId);
+  }
+
+  Future<void> _initTracking() async {
+    final prefs = await SharedPreferences.getInstance();
+    final userId = prefs.getInt('user_id') ?? -1;
+    final String todayStr = DateTime.now().toIso8601String().substring(0, 10);
+
+    // Check if day changed since last run
+    final String savedDate = prefs.getString('last_step_date') ?? todayStr;
+
+    if (savedDate != todayStr) {
+      // New day - reset everything
+      final int raw = prefs.getInt('raw_steps') ?? 0;
+      await prefs.setInt(_prefKey('steps_base', userId), raw);
+      await prefs.setString('last_step_date', todayStr);
+      await prefs.setInt(_prefKey('steps_value', userId), 0);
+      await prefs.setDouble(_prefKey('calories_value', userId), 0.0);
+      await prefs.setInt(_prefKey('active_value', userId), 0);
+      await prefs.remove(_prefKey('activity_id', userId));
+
+      // Insert initial record for today
+      if (userId > 0) {
+        await http.post(
+          Uri.parse(_urlInsert),
+          body: {
+            'user_id': userId.toString(),
+            'steps': '0',
+            'distance': '0',
+            'duration': '0',
+            'calories': '0',
+            'activity_date': todayStr,
+          },
+        );
+      }
+    }
+
+    // Load saved values
+    final savedSteps = prefs.getInt(_prefKey('steps_value', userId)) ?? 0;
+    final savedBase = prefs.getInt(_prefKey('steps_base', userId)) ?? 0;
+    final savedCalories =
+        prefs.getDouble(_prefKey('calories_value', userId)) ?? 0.0;
+    final savedActive = prefs.getInt(_prefKey('active_value', userId)) ?? 0;
+
+    if (mounted) {
+      setState(() {
+        stepCount = savedSteps;
+        baseSteps = savedBase;
+        caloriesBurned = savedCalories;
+        activeMinutes = savedActive;
+        distanceKm = calculateDistance(savedSteps);
+      });
+    }
+
+    // Fetch server data for today
+    if (userId > 0) {
+      await _fetchTodayActivityFromServerAndMerge();
+    }
+  }
+
+  String _todayKey() {
+    return DateTime.now().toIso8601String().substring(0, 10);
   }
 
   @override
