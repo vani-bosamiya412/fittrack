@@ -429,121 +429,104 @@ class _WorkoutDetailScreenState extends State<WorkoutDetailScreen> {
                     ),
                   ),
                 ),
-
-                SizedBox(height: 24 * scale),
               ],
             ),
           ),
+        ],
+      ),
 
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 0,
-            child: Container(
-              padding: EdgeInsets.fromLTRB(16 * scale, 12 * scale, 16 * scale, 24 * scale),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.06),
-                    blurRadius: 10,
-                    offset: Offset(0, -6),
-                  )
-                ],
-              ),
-              child: SafeArea(
-                top: false,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
+      bottomNavigationBar: Container(
+        padding: EdgeInsets.fromLTRB(16 * scale, 12 * scale, 16 * scale, 24 * scale),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.06),
+              blurRadius: 10,
+              offset: Offset(0, -6),
+            )
+          ],
+        ),
+        child: SafeArea(
+          top: false,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: EdgeInsets.symmetric(vertical: 10 * scale, horizontal: 14 * scale),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(12 * scale),
+                  border: Border.all(color: Colors.grey.shade200),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Container(
-                      padding: EdgeInsets.symmetric(vertical: 10 * scale, horizontal: 14 * scale),
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade100,
-                        borderRadius: BorderRadius.circular(12 * scale),
-                        border: Border.all(color: Colors.grey.shade200),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text(
-                            isRunning ? "Time left: " : "Timer: ",
-                            style: TextStyle(fontSize: 12 * scale, color: Colors.black54),
-                          ),
-                          SizedBox(width: 6 * scale),
-                          Text(
-                            formatTime(secondsLeft),
-                            style: TextStyle(
-                              fontSize: 18 * scale,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.purpleAccent,
-                            ),
-                          ),
-                        ],
-                      ),
+                    Text(
+                      isRunning ? "Time left: " : "Timer: ",
+                      style: TextStyle(fontSize: 12 * scale, color: Colors.black54),
                     ),
-                    SizedBox(height: 12 * scale),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 52 * scale,
-                      child: ElevatedButton.icon(
-                        onPressed: () {
-                          if (!isRunning) {
-                            startWorkout();
-                          } else if (isPaused) {
-                            resumeWorkout();
-                          } else {
-                            pauseWorkout();
-                          }
-                        },
-                        icon: Icon(Icons.play_arrow, color: Colors.white),
-                        label: Text(
-                          !isRunning ? "Start Workout" : (isPaused ? "Resume" : "Pause"),
-                          style: TextStyle(
-                            fontSize: 16 * scale,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white,
-                          ),
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.black87,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12 * scale),
-                          ),
-                        ),
+                    SizedBox(width: 6 * scale),
+                    Text(
+                      formatTime(secondsLeft),
+                      style: TextStyle(
+                        fontSize: 18 * scale,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.purpleAccent,
                       ),
                     ),
                   ],
                 ),
               ),
-            ),
-          ),
-
-          if (isRunning)
-            Positioned(
-              left: 22 * scale,
-              bottom: 112 * scale,
-              child: TextButton.icon(
-                onPressed: completeWorkout,
-                icon: Icon(Icons.stop, color: Colors.redAccent),
-                label: Text(
-                  "End Workout Early",
-                  style: TextStyle(
-                    color: Colors.redAccent,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14 * scale,
+              SizedBox(height: 12 * scale),
+              SizedBox(
+                width: double.infinity,
+                height: 52 * scale,
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    if (!isRunning) {
+                      startWorkout();
+                    } else if (isPaused) {
+                      resumeWorkout();
+                    } else {
+                      pauseWorkout();
+                    }
+                  },
+                  icon: Icon(Icons.play_arrow, color: Colors.white),
+                  label: Text(
+                    !isRunning ? "Start Workout" : (isPaused ? "Resume" : "Pause"),
+                    style: TextStyle(
+                      fontSize: 16 * scale,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                    ),
                   ),
-                ),
-                style: TextButton.styleFrom(
-                  backgroundColor: Colors.white,
-                  padding: EdgeInsets.symmetric(horizontal: 10 * scale, vertical: 6 * scale),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8 * scale),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.black87,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12 * scale),
+                    ),
                   ),
                 ),
               ),
-            ),
-        ],
+              if (isRunning) ...[
+                SizedBox(height: 8 * scale),
+                TextButton.icon(
+                  onPressed: completeWorkout,
+                  icon: Icon(Icons.stop, color: Colors.redAccent),
+                  label: Text(
+                    "End Workout Early",
+                    style: TextStyle(
+                      color: Colors.redAccent,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14 * scale,
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
       ),
     );
   }

@@ -80,7 +80,7 @@ class TermsOfServiceScreen extends StatelessWidget {
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Text(
-                "Last updated: November 24, 2024",
+                "Last updated: November 24, 2025",
                 style: TextStyle(
                   fontSize: 13 * scale,
                   color: Colors.black87,

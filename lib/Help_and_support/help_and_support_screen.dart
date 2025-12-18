@@ -126,7 +126,7 @@ class _HelpSupportScreenState extends State<HelpSupportScreen> {
                 borderRadius: BorderRadius.circular(16),
               ),
               child: Text(
-                "Email: support@fitlife.com\n"
+                "Email: support@fittrack.com\n"
                 "Hours: Mon–Fri, 9AM–6PM EST\n"
                 "Response time: Within 24 hours",
                 style: TextStyle(
