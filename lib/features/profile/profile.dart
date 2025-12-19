@@ -448,12 +448,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Icon(Icons.logout, color: Colors.red),
-                          SizedBox(width: 6),
+                          SizedBox(width: 6 * scale),
                           Text(
                             "Logout",
                             style: TextStyle(
                               color: Colors.red,
-                              fontSize: 16,
+                              fontSize: 16 * scale,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
@@ -480,12 +480,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Icon(Icons.delete_forever, color: Colors.red),
-                          SizedBox(width: 6),
+                          SizedBox(width: 6 * scale),
                           Text(
                             "Delete Account",
                             style: TextStyle(
                               color: Colors.red,
-                              fontSize: 16,
+                              fontSize: 16 * scale,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
