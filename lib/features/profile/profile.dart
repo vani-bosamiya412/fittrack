@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../Achievements/my_achievements.dart';
 import '../Edit_profile/edit_profile.dart';
@@ -63,6 +64,77 @@ class _ProfileScreenState extends State<ProfileScreen> {
       return 0;
     }
   }
+
+  Future<void> _deleteAccount() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    final userId = prefs.getString("user_id");
+
+    if (userId == null) return;
+
+    try {
+      final response = await http.post(
+        Uri.parse("https://prakrutitech.xyz/vani/delete_user.php"),
+        body: {
+          "user_id": userId,
+        },
+      );
+
+      final result = response.body.trim().toLowerCase();
+
+      if (response.statusCode == 200 && result.contains("success")) {
+        await prefs.clear();
+
+        if (!mounted) return;
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (_) => LoginScreen()),
+              (route) => false,
+        );
+      } else {
+        _showError("Failed to delete account. Please try again.");
+      }
+    } catch (e) {
+      _showError("Something went wrong. Check your internet connection.");
+    }
+  }
+
+  void _showError(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.red,
+      ),
+    );
+  }
+
+  void _confirmDeleteAccount() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text("Delete Account"),
+        content: Text(
+          "This action is permanent. All your data will be deleted.\n\nAre you sure you want to continue?",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text("Cancel"),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _deleteAccount();
+            },
+            child: Text(
+              "Delete",
+              style: TextStyle(color: Colors.red),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
 
   @override
   Widget build(BuildContext context) {
@@ -391,8 +463,40 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                 ),
               ),
-        
-              SizedBox(height: 30),
+
+              SizedBox(height: 12 * scale),
+
+              Center(
+                child: GestureDetector(
+                  onTap: _confirmDeleteAccount,
+                  child: Container(
+                    padding: EdgeInsets.symmetric(vertical: 16 * scale),
+                    decoration: BoxDecoration(
+                      color: Colors.red.shade50,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Center(
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.delete_forever, color: Colors.red),
+                          SizedBox(width: 6),
+                          Text(
+                            "Delete Account",
+                            style: TextStyle(
+                              color: Colors.red,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+
+              SizedBox(height: 30 * scale),
             ],
           ),
         ),
