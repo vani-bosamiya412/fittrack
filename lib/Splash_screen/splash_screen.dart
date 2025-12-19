@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -19,13 +20,15 @@ class _SplashScreenState extends State<SplashScreen>
   late AnimationController _controller;
   late Animation<double> _fadeAnimation;
 
+  StreamSubscription<List<ConnectivityResult>>? connectivitySubscription;
+
   @override
   void initState() {
     super.initState();
 
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 2),
+      duration: Duration(seconds: 2),
     );
 
     _fadeAnimation = Tween<double>(
@@ -42,6 +45,12 @@ class _SplashScreenState extends State<SplashScreen>
         showPermissionPopup();
       } else {
         navigateNext();
+      }
+    });
+
+    connectivitySubscription = Connectivity().onConnectivityChanged.listen((results) {
+      if (results.contains(ConnectivityResult.none)) {
+        showNetworkError();
       }
     });
   }
@@ -68,9 +77,24 @@ class _SplashScreenState extends State<SplashScreen>
 
     if (kDebugMode) {
       print("Permission status:");
+    }
+    if (kDebugMode) {
       print("Activity: $activity");
+    }
+    if (kDebugMode) {
       print("Sensors: $sensors");
+    }
+    if (kDebugMode) {
       print("BodySensors: $bodySensors");
+    }
+  }
+
+  Future<void> requestBatteryOptimizationPermission() async {
+    if (Platform.isAndroid) {
+      var status = await Permission.ignoreBatteryOptimizations.status;
+      if (!status.isGranted) {
+        await Permission.ignoreBatteryOptimizations.request();
+      }
     }
   }
 
@@ -86,6 +110,7 @@ class _SplashScreenState extends State<SplashScreen>
 
   Future<void> requestAllPermissions() async {
     await Permission.activityRecognition.request();
+
     await Permission.sensors.request();
 
     if (Platform.isAndroid) {
@@ -96,13 +121,11 @@ class _SplashScreenState extends State<SplashScreen>
   }
 
   void showPermissionPopup() {
-    final media = MediaQuery.of(context);
-
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) {
-        final maxHeight = media.size.height * 0.6;
+        final maxHeight = MediaQuery.of(context).size.height * 0.6;
 
         return AlertDialog(
           shape: RoundedRectangleBorder(
@@ -114,13 +137,11 @@ class _SplashScreenState extends State<SplashScreen>
             children: const [
               Icon(Icons.health_and_safety, color: Color(0xFF4C3AFF)),
               SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  "Permissions Required",
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black,
-                  ),
+              Text(
+                "Permissions Required",
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black,
                 ),
               ),
             ],
@@ -143,11 +164,13 @@ class _SplashScreenState extends State<SplashScreen>
                     "Activity Recognition",
                     "Required for step counting",
                   ),
+
                   _permissionRow(
                     Icons.sensors,
                     "Motion Sensors",
                     "Detects steps even when screen is off",
                   ),
+
                   _permissionRow(
                     Icons.battery_full,
                     "Battery Optimization",
@@ -189,14 +212,19 @@ class _SplashScreenState extends State<SplashScreen>
     SharedPreferences prefs = await SharedPreferences.getInstance();
     bool isLoggedIn = prefs.getBool("isLoggedIn") ?? false;
 
-    Timer(const Duration(seconds: 3), () {
+    Timer(Duration(seconds: 3), () {
       if (!mounted) return;
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (_) => isLoggedIn ? BottomNav() : OnboardingScreen(),
-        ),
-      );
+      if (isLoggedIn) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => BottomNav()),
+        );
+      } else {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => OnboardingScreen()),
+        );
+      }
     });
   }
 
@@ -217,7 +245,10 @@ class _SplashScreenState extends State<SplashScreen>
                   style: const TextStyle(fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 2),
-                Text(subtitle, style: const TextStyle(color: Colors.black54)),
+                Text(
+                  subtitle,
+                  style: const TextStyle(color: Colors.black54),
+                ),
               ],
             ),
           ),
@@ -228,54 +259,86 @@ class _SplashScreenState extends State<SplashScreen>
 
   @override
   Widget build(BuildContext context) {
-    final media = MediaQuery.of(context);
-    final textScale = media.size.width / 375;
+    final width = MediaQuery.of(context).size.width;
+    final textScale = width / 375;
 
     return Scaffold(
-      body: SafeArea(
-        child: Container(
-          width: media.size.width,
-          height: media.size.height,
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [Color(0xFF4C3AFF), Color(0xFFA353FF)],
-            ),
+      body: Container(
+        width: double.infinity,
+        height: double.infinity,
+
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFF4C3AFF), Color(0xFFA353FF),],
           ),
-          child: FadeTransition(
-            opacity: _fadeAnimation,
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Image.asset("assets/logo.png", width: 180 * textScale),
-                const SizedBox(height: 24),
-                Text(
-                  "FitTrack",
-                  style: TextStyle(
-                    fontSize: 32 * textScale,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
+        ),
+
+        child: FadeTransition(
+          opacity: _fadeAnimation,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Image.asset("assets/logo.png", width: 180 * textScale),
+              SizedBox(height: 24),
+              Text(
+                "FitTrack",
+                style: TextStyle(
+                  fontSize: 32 * textScale,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                  letterSpacing: 1,
                 ),
-                const SizedBox(height: 6),
-                Text(
-                  "Transform Your Body & Mind",
-                  style: TextStyle(
-                    fontSize: 16 * textScale,
-                    color: Colors.white.withValues(alpha: 0.85),
-                  ),
+              ),
+              SizedBox(height: 6),
+              Text(
+                "Transform Your Body & Mind",
+                style: TextStyle(
+                  fontSize: 16 * textScale,
+                  color: Colors.white.withValues(alpha: 0.85),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
     );
   }
 
+  void showNetworkError() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: Colors.grey.shade900,
+          title: Row(
+            children: [
+              Icon(Icons.error, color: Colors.white),
+              SizedBox(width: 8),
+              Text("Network Error", style: TextStyle(color: Colors.white)),
+            ],
+          ),
+          content: Text(
+            'Please check your internet connection.',
+            style: TextStyle(color: Colors.white70),
+          ),
+          actions: [
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.white),
+              onPressed: () => exit(0),
+              child: Text("Exit", style: TextStyle(color: Colors.black)),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   void dispose() {
+    connectivitySubscription?.cancel();
     _controller.dispose();
     super.dispose();
   }
