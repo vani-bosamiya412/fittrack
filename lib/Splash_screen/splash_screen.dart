@@ -125,13 +125,16 @@ class _SplashScreenState extends State<SplashScreen>
       context: context,
       barrierDismissible: false,
       builder: (context) {
+        final maxHeight = MediaQuery.of(context).size.height * 0.6;
+
         return AlertDialog(
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
           ),
           backgroundColor: Colors.white,
+
           title: Row(
-            children: [
+            children: const [
               Icon(Icons.health_and_safety, color: Color(0xFF4C3AFF)),
               SizedBox(width: 10),
               Text(
@@ -143,69 +146,57 @@ class _SplashScreenState extends State<SplashScreen>
               ),
             ],
           ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                "FitTrack needs these permissions to track your steps accurately:",
-                style: TextStyle(color: Colors.black87, fontSize: 15),
-              ),
-              SizedBox(height: 15),
-              Row(
+
+          content: ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: maxHeight),
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(Icons.directions_walk, color: Color(0xFF4C3AFF)),
-                  SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      "Activity Recognition\n(required for step counting)",
-                      style: TextStyle(color: Colors.black87),
-                    ),
+                  const Text(
+                    "FitTrack needs these permissions to track your steps accurately:",
+                    style: TextStyle(color: Colors.black87, fontSize: 15),
+                  ),
+                  const SizedBox(height: 15),
+
+                  _permissionRow(
+                    Icons.directions_walk,
+                    "Activity Recognition",
+                    "Required for step counting",
+                  ),
+
+                  _permissionRow(
+                    Icons.sensors,
+                    "Motion Sensors",
+                    "Detects steps even when screen is off",
+                  ),
+
+                  _permissionRow(
+                    Icons.battery_full,
+                    "Battery Optimization",
+                    "Prevents step tracking from stopping",
                   ),
                 ],
               ),
-              SizedBox(height: 12),
-              Row(
-                children: [
-                  Icon(Icons.sensors, color: Color(0xFF4C3AFF)),
-                  SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      "Motion Sensors\n(to detect steps even when screen is off)",
-                      style: TextStyle(color: Colors.black87),
-                    ),
-                  ),
-                ],
-              ),
-              SizedBox(height: 12),
-              Row(
-                children: [
-                  Icon(Icons.battery_full, color: Color(0xFF4C3AFF)),
-                  SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      "Battery Optimization\n(prevents step tracking from stopping)",
-                      style: TextStyle(color: Colors.black87),
-                    ),
-                  ),
-                ],
-              ),
-            ],
+            ),
           ),
+
           actions: [
-            TextButton(
-              onPressed: () async {
-                Navigator.pop(context);
-                await requestAllPermissions();
-                navigateNext();
-              },
-              child: Container(
-                padding: EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                decoration: BoxDecoration(
-                  color: Color(0xFF4C3AFF),
-                  borderRadius: BorderRadius.circular(8),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF4C3AFF),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
                 ),
-                child: Text(
+                onPressed: () async {
+                  Navigator.pop(context);
+                  await requestAllPermissions();
+                  navigateNext();
+                },
+                child: const Text(
                   "Allow Permissions",
                   style: TextStyle(color: Colors.white),
                 ),
@@ -235,6 +226,35 @@ class _SplashScreenState extends State<SplashScreen>
         );
       }
     });
+  }
+
+  Widget _permissionRow(IconData icon, String title, String subtitle) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: const Color(0xFF4C3AFF)),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  style: const TextStyle(color: Colors.black54),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
