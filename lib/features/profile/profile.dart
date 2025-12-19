@@ -1,13 +1,13 @@
-import 'package:fittrack/Achievements/my_achievements.dart';
-import 'package:fittrack/Help_and_support/help_and_support_screen.dart';
-import 'package:fittrack/Privacy/privacy_screen.dart';
-import 'package:fittrack/Terms/terms_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../Achievements/my_achievements.dart';
 import '../Edit_profile/edit_profile.dart';
-import '../Login/login.dart';
+import '../Help_and_support/help_and_support_screen.dart';
 import '../Notification/app_notification_screen.dart';
 import '../Notification/notification_screen.dart';
+import '../Privacy/privacy_screen.dart';
+import '../Terms/terms_screen.dart';
+import '../auth/Login/login.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
-import '../Bottom_nav/bottom_nav.dart';
+import '../../Bottom_nav/bottom_nav.dart';
 import '../SignUp/signup.dart';
 
 class LoginScreen extends StatefulWidget {
