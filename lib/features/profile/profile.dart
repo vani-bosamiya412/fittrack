@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -46,64 +48,80 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   int calculateAge(String dobString) {
-    if (dobString.isEmpty) return 0;
+    if (dobString.isEmpty || dobString == "0000-00-00") {
+      return -1;
+    }
 
     try {
-      DateTime dob = DateTime.parse(dobString);
-      DateTime today = DateTime.now();
+      final parts = dobString.split("-");
+      if (parts.length != 3) return -1;
+
+      final year = int.tryParse(parts[0]) ?? 0;
+      final month = int.tryParse(parts[1]) ?? 0;
+      final day = int.tryParse(parts[2]) ?? 0;
+
+      if (year <= 1900 || month == 0 || day == 0) return -1;
+
+      final dob = DateTime(year, month, day);
+      final today = DateTime.now();
 
       int age = today.year - dob.year;
-
       if (today.month < dob.month ||
           (today.month == dob.month && today.day < dob.day)) {
         age--;
       }
 
       return age;
-    } catch (e) {
-      return 0;
+    } catch (_) {
+      return -1;
     }
   }
 
   Future<void> _deleteAccount() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
-    final userId = prefs.getString("user_id");
 
-    if (userId == null) return;
+    final int? userId = prefs.getInt("user_id");
+
+    if (userId == null) {
+      _showError("User ID not found");
+      return;
+    }
 
     try {
       final response = await http.post(
         Uri.parse("https://prakrutitech.xyz/vani/delete_user.php"),
         body: {
-          "user_id": userId,
+          "id": userId.toString(),
         },
       );
 
-      final result = response.body.trim().toLowerCase();
+      if (response.statusCode != 200) {
+        _showError("Server error");
+        return;
+      }
 
-      if (response.statusCode == 200 && result.contains("success")) {
+      final data = jsonDecode(response.body);
+
+      if (data["status"] == "success") {
         await prefs.clear();
 
         if (!mounted) return;
         Navigator.pushAndRemoveUntil(
           context,
           MaterialPageRoute(builder: (_) => LoginScreen()),
-              (route) => false,
+              (_) => false,
         );
       } else {
-        _showError("Failed to delete account. Please try again.");
+        _showError(data["message"] ?? "Delete failed");
       }
     } catch (e) {
-      _showError("Something went wrong. Check your internet connection.");
+      _showError("Network error");
     }
   }
 
   void _showError(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: Colors.red,
-      ),
+      SnackBar(content: Text(message), backgroundColor: Colors.red),
     );
   }
 
@@ -125,16 +143,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
               Navigator.pop(context);
               _deleteAccount();
             },
-            child: Text(
-              "Delete",
-              style: TextStyle(color: Colors.red),
-            ),
+            child: Text("Delete", style: TextStyle(color: Colors.red)),
           ),
         ],
       ),
     );
   }
-
 
   @override
   Widget build(BuildContext context) {
@@ -142,6 +156,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final scale = mq.size.width / 375;
 
     String initials = name.isNotEmpty ? name[0].toUpperCase() : "?";
+    final age = calculateAge(dob);
 
     return Scaffold(
       backgroundColor: Color(0xFFF5F6FA),
@@ -150,10 +165,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         elevation: 0,
         title: Text(
           "Profile",
-          style: TextStyle(
-            color: Colors.black,
-            fontWeight: FontWeight.bold,
-          ),
+          style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
         ),
       ),
 
@@ -249,9 +261,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
               SizedBox(height: 20 * scale),
               Row(
                 children: [
-                  _statBox("Age", dob.isEmpty ? "--" : "${calculateAge(dob)} years", scale),
-                  _statBox("Weight", weight.isEmpty ? "--" : "$weight kg", scale),
-                  _statBox("Height", height.isEmpty ? "--" : "$height cm", scale),
+                  _statBox(
+                    "Age",
+                    age <= 0 ? "--" : "$age years",
+                    scale,
+                  ),
+                  _statBox(
+                    "Weight",
+                    weight.isEmpty ? "--" : "$weight kg",
+                    scale,
+                  ),
+                  _statBox(
+                    "Height",
+                    height.isEmpty ? "--" : "$height cm",
+                    scale,
+                  ),
                 ],
               ),
               SizedBox(height: 25 * scale),
@@ -263,7 +287,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   color: Colors.black87,
                 ),
               ),
-              SizedBox(height: 10 * scale,),
+              SizedBox(height: 10 * scale),
               Container(
                 decoration: BoxDecoration(
                   color: Colors.white,
@@ -271,7 +295,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
                 child: Column(
                   children: [
-                    SizedBox(height: 10 * scale,),
+                    SizedBox(height: 10 * scale),
                     _settingsTile(
                       icon: Icons.edit,
                       title: "Edit Profile",
@@ -288,9 +312,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         }
                       },
                     ),
-                    SizedBox(height: 10 * scale,),
+                    SizedBox(height: 10 * scale),
                     Divider(height: 1, color: Colors.grey.shade300),
-                    SizedBox(height: 10 * scale,),
+                    SizedBox(height: 10 * scale),
                     _settingsTile(
                       icon: Icons.star_border,
                       title: "My Achievements",
@@ -298,11 +322,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       onTap: () {
                         Navigator.push(
                           context,
-                          MaterialPageRoute(builder: (context) => MyAchievementsScreen()),
+                          MaterialPageRoute(
+                            builder: (context) => MyAchievementsScreen(),
+                          ),
                         );
                       },
                     ),
-                    SizedBox(height: 10 * scale,),
+                    SizedBox(height: 10 * scale),
                   ],
                 ),
               ),
@@ -315,7 +341,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   color: Colors.black87,
                 ),
               ),
-              SizedBox(height: 10 * scale,),
+              SizedBox(height: 10 * scale),
               Container(
                 decoration: BoxDecoration(
                   color: Colors.white,
@@ -331,7 +357,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       onTap: () {
                         Navigator.push(
                           context,
-                          MaterialPageRoute(builder: (context) => NotificationSettingsScreen()),
+                          MaterialPageRoute(
+                            builder: (context) => NotificationSettingsScreen(),
+                          ),
                         );
                       },
                     ),
@@ -345,7 +373,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       onTap: () {
                         Navigator.push(
                           context,
-                          MaterialPageRoute(builder: (context) => AppSettingsScreen()),
+                          MaterialPageRoute(
+                            builder: (context) => AppSettingsScreen(),
+                          ),
                         );
                       },
                     ),
@@ -353,7 +383,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ],
                 ),
               ),
-        
+
               SizedBox(height: 25 * scale),
               Text(
                 "Support & Legal",
@@ -363,7 +393,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   color: Colors.black87,
                 ),
               ),
-              SizedBox(height: 10 * scale,),
+              SizedBox(height: 10 * scale),
               Container(
                 decoration: BoxDecoration(
                   color: Colors.white,
@@ -379,7 +409,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       onTap: () {
                         Navigator.push(
                           context,
-                          MaterialPageRoute(builder: (context) => HelpSupportScreen()),
+                          MaterialPageRoute(
+                            builder: (context) => HelpSupportScreen(),
+                          ),
                         );
                       },
                     ),
@@ -393,7 +425,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       onTap: () {
                         Navigator.push(
                           context,
-                          MaterialPageRoute(builder: (context) => PrivacyPolicyScreen()),
+                          MaterialPageRoute(
+                            builder: (context) => PrivacyPolicyScreen(),
+                          ),
                         );
                       },
                     ),
@@ -407,7 +441,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       onTap: () {
                         Navigator.push(
                           context,
-                          MaterialPageRoute(builder: (context) => TermsOfServiceScreen()),
+                          MaterialPageRoute(
+                            builder: (context) => TermsOfServiceScreen(),
+                          ),
                         );
                       },
                     ),
@@ -419,12 +455,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
               Center(
                 child: GestureDetector(
                   onTap: () async {
-                    SharedPreferences prefs = await SharedPreferences.getInstance();
-                    int? totalWorkoutMinutes = prefs.getInt('totalWorkoutMinutes');
-        
+                    SharedPreferences prefs =
+                        await SharedPreferences.getInstance();
+                    int? totalWorkoutMinutes = prefs.getInt(
+                      'totalWorkoutMinutes',
+                    );
+
                     await prefs.remove("isLoggedIn");
                     await prefs.remove("user_id");
-        
+
                     if (totalWorkoutMinutes != null) {
                       await prefs.setInt(
                         'totalWorkoutMinutes',
@@ -434,7 +473,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     Navigator.pushAndRemoveUntil(
                       context,
                       MaterialPageRoute(builder: (_) => LoginScreen()),
-                          (route) => false,
+                      (route) => false,
                     );
                   },
                   child: Container(
@@ -517,10 +556,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           children: [
             Text(
               title,
-              style: TextStyle(
-                fontSize: 14 * scale,
-                color: Colors.black,
-              ),
+              style: TextStyle(fontSize: 14 * scale, color: Colors.black),
             ),
             SizedBox(height: 4),
             Text(
@@ -528,7 +564,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               style: TextStyle(
                 fontSize: 16 * scale,
                 fontWeight: FontWeight.bold,
-                color: Colors.black
+                color: Colors.black,
               ),
             ),
           ],
@@ -554,7 +590,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
       title: Text(
         title,
-        style: TextStyle(fontSize: 15 * scale, fontWeight: FontWeight.w500, color: Colors.black),
+        style: TextStyle(
+          fontSize: 15 * scale,
+          fontWeight: FontWeight.w500,
+          color: Colors.black,
+        ),
       ),
       trailing: Icon(
         Icons.arrow_forward_ios,
