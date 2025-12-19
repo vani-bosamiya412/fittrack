@@ -331,7 +331,7 @@ class _WorkoutDetailScreenState extends State<WorkoutDetailScreen> {
           : Stack(
         children: [
           SingleChildScrollView(
-            padding: EdgeInsets.only(bottom: 140 * scale),
+            padding: EdgeInsets.only(bottom: 50 * scale),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
