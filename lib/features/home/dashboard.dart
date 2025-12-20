@@ -244,157 +244,12 @@ class _FitnessDashboardState extends State<FitnessDashboard>
     return (steps / 100).floor();
   }
 
-  // Future<void> _applyRawStepsSafely(
-  //   int rawSteps,
-  //   SharedPreferences prefs, {
-  //   required int userId,
-  //   required String todayKey,
-  // }) async {
-  //   // Save raw steps for persistence
-  //   if (rawSteps > 0) {
-  //     await prefs.setInt('raw_steps', rawSteps);
-  //   } else {
-  //     rawSteps = prefs.getInt('raw_steps') ?? 0;
-  //   }
-  //
-  //   // Get today's date and compare with last saved date
-  //   final DateTime now = DateTime.now();
-  //   final String todayDate = now.toIso8601String().substring(0, 10);
-  //   final String lastSavedDate = prefs.getString('last_step_date') ?? todayDate;
-  //
-  //   if (lastSavedDate != todayDate) {
-  //     // FREEZE yesterday
-  //     await _finalizeYesterdayOnServer(userId, lastSavedDate);
-  //
-  //     // FORCE RESET
-  //     await prefs.setString('last_step_date', todayDate);
-  //
-  //     // IMPORTANT: set base to CURRENT rawSteps snapshot
-  //     await prefs.setInt(_prefKey('steps_base', userId), rawSteps);
-  //
-  //     await prefs.setInt(_prefKey('steps_value', userId), 0);
-  //     await prefs.setDouble(_prefKey('calories_value', userId), 0);
-  //     await prefs.setInt(_prefKey('active_value', userId), 0);
-  //     await prefs.remove(_prefKey('activity_id', userId));
-  //
-  //     if (mounted) {
-  //       setState(() {
-  //         baseSteps = rawSteps;
-  //         stepCount = 0;
-  //         caloriesBurned = 0.0;
-  //         activeMinutes = 0;
-  //         distanceKm = 0.0;
-  //       });
-  //     }
-  //
-  //     return; // DO NOT continue calculation
-  //   }
-  //
-  //   // CRITICAL: Check if it's a new day (after midnight)
-  //   final bool isNewDay = lastSavedDate != todayDate;
-  //
-  //   if (isNewDay) {
-  //     if (kDebugMode) print("NEW DAY DETECTED: $lastSavedDate -> $todayDate");
-  //
-  //     // Finalize yesterday's data on server
-  //     await _finalizeYesterdayOnServer(userId, lastSavedDate);
-  //
-  //     // Reset all daily values for the new day
-  //     await prefs.setString('last_step_date', todayDate);
-  //     await prefs.setInt(_prefKey('steps_base', userId), rawSteps);
-  //     await prefs.setInt(_prefKey('steps_value', userId), 0);
-  //     await prefs.setDouble(_prefKey('calories_value', userId), 0.0);
-  //     await prefs.setInt(_prefKey('active_value', userId), 0);
-  //     await prefs.remove(_prefKey('activity_id', userId));
-  //
-  //     // Insert initial record for today with 0 values
-  //     try {
-  //       await http.post(
-  //         Uri.parse(_urlInsert),
-  //         body: {
-  //           'user_id': userId.toString(),
-  //           'steps': '0',
-  //           'distance': '0',
-  //           'duration': '0',
-  //           'calories': '0',
-  //           'activity_date': todayDate,
-  //         },
-  //       );
-  //     } catch (e) {
-  //       if (kDebugMode) print("Initial insert error: $e");
-  //     }
-  //
-  //     // Update state to reflect reset
-  //     if (mounted) {
-  //       setState(() {
-  //         baseSteps = rawSteps;
-  //         stepCount = 0;
-  //         caloriesBurned = 0.0;
-  //         activeMinutes = 0;
-  //         distanceKm = 0.0;
-  //       });
-  //     }
-  //
-  //     return; // Early return since we've reset for new day
-  //   }
-  //
-  //   // Continue with normal processing for same day
-  //   int base = prefs.getInt(_prefKey('steps_base', userId)) ?? 0;
-  //
-  //   // If base is 0 or we need to recalibrate
-  //   if (base == 0 || rawSteps < base) {
-  //     base = rawSteps;
-  //     await prefs.setInt(_prefKey('steps_base', userId), base);
-  //   }
-  //
-  //   int todaySteps = rawSteps - base;
-  //   if (todaySteps < 0) todaySteps = 0;
-  //
-  //   // Calculate derived metrics
-  //   final int newActiveMinutes = calculateMoveMinutes(todaySteps);
-  //   final double newCaloriesBurned = calculateCalories(
-  //     todaySteps,
-  //     newActiveMinutes,
-  //   );
-  //   final double newDistanceKm = calculateDistance(todaySteps);
-  //
-  //   // Check if values changed significantly
-  //   final bool stepsChanged = (todaySteps - stepCount).abs() > 5;
-  //   final bool timeElapsed = now.difference(_lastChangeTime).inSeconds >= 2;
-  //
-  //   if (stepsChanged || timeElapsed) {
-  //     _lastChangeTime = now;
-  //
-  //     if (mounted) {
-  //       setState(() {
-  //         stepCount = todaySteps;
-  //         activeMinutes = newActiveMinutes;
-  //         caloriesBurned = newCaloriesBurned;
-  //         distanceKm = newDistanceKm;
-  //       });
-  //     }
-  //
-  //     // Save to local storage
-  //     await prefs.setInt(_prefKey('steps_value', userId), todaySteps);
-  //     await prefs.setDouble(
-  //       _prefKey('calories_value', userId),
-  //       newCaloriesBurned,
-  //     );
-  //     await prefs.setInt(_prefKey('active_value', userId), newActiveMinutes);
-  //     await prefs.setDouble(_prefKey('distance_value', userId), newDistanceKm);
-  //
-  //     // Trigger sync to server
-  //     _scheduleSyncToServer(userId);
-  //   }
-  // }
-
   Future<void> _applyRawStepsSafely(
       int rawSteps,
       SharedPreferences prefs, {
         required int userId,
         required String todayKey,
       }) async {
-    // 1. Persist raw steps immediately for recovery
     if (rawSteps > 0) {
       await prefs.setInt('raw_steps', rawSteps);
     } else {
@@ -403,19 +258,14 @@ class _FitnessDashboardState extends State<FitnessDashboard>
 
     final String lastSavedDate = prefs.getString('last_step_date') ?? todayKey;
 
-    // 2. CRITICAL: Check if the date has changed (Midnight Transition)
     if (lastSavedDate != todayKey) {
       if (kDebugMode) print("DATE CHANGE DETECTED: $lastSavedDate -> $todayKey");
 
-      // Finalize yesterday's data on the server BEFORE resetting local variables
       await _finalizeYesterdayOnServer(userId, lastSavedDate);
 
-      // Update the base to the CURRENT raw total.
-      // This makes: (Current Raw - Base) = 0 for the start of the new day.
       await prefs.setInt(_prefKey('steps_base', userId), rawSteps);
       await prefs.setString('last_step_date', todayKey);
 
-      // Reset daily accumulated values
       await prefs.setInt(_prefKey('steps_value', userId), 0);
       await prefs.setDouble(_prefKey('calories_value', userId), 0.0);
       await prefs.setInt(_prefKey('active_value', userId), 0);
@@ -430,13 +280,11 @@ class _FitnessDashboardState extends State<FitnessDashboard>
           distanceKm = 0.0;
         });
       }
-      return; // Stop here so we don't calculate steps using old data
+      return;
     }
 
-    // 3. Normal Same-Day Processing
     int base = prefs.getInt(_prefKey('steps_base', userId)) ?? rawSteps;
 
-    // Handle phone reboot (where rawSteps resets to 0 but base is high)
     if (rawSteps < base) {
       base = rawSteps;
       await prefs.setInt(_prefKey('steps_base', userId), base);
@@ -445,12 +293,10 @@ class _FitnessDashboardState extends State<FitnessDashboard>
     int todaySteps = rawSteps - base;
     if (todaySteps < 0) todaySteps = 0;
 
-    // Calculate metrics
     final int newActiveMinutes = calculateMoveMinutes(todaySteps);
     final double newCaloriesBurned = calculateCalories(todaySteps, newActiveMinutes);
     final double newDistanceKm = calculateDistance(todaySteps);
 
-    // 4. Update UI and Local Storage if data changed
     if (todaySteps != stepCount) {
       if (mounted) {
         setState(() {
@@ -477,19 +323,16 @@ class _FitnessDashboardState extends State<FitnessDashboard>
 
     final prefs = await SharedPreferences.getInstance();
 
-    // Get yesterday's final values
     final int steps = prefs.getInt(_prefKey('steps_value', userId)) ?? 0;
     final double calories =
         prefs.getDouble(_prefKey('calories_value', userId)) ?? 0.0;
     final int active = prefs.getInt(_prefKey('active_value', userId)) ?? 0;
     final double distance = calculateDistance(steps);
 
-    // Get the activity ID for yesterday
     final int activityId = prefs.getInt(_prefKey('activity_id', userId)) ?? 0;
 
     try {
       if (activityId > 0) {
-        // Update existing record
         await http.post(
           Uri.parse('https://prakrutitech.xyz/vani/update_activities.php'),
           body: {
@@ -502,7 +345,6 @@ class _FitnessDashboardState extends State<FitnessDashboard>
           },
         );
       } else {
-        // Insert new record
         await http.post(
           Uri.parse(_urlInsert),
           body: {
@@ -520,7 +362,6 @@ class _FitnessDashboardState extends State<FitnessDashboard>
     } catch (e) {
       if (kDebugMode) print("Failed to finalize yesterday: $e");
 
-      // Fallback: Try simple insert
       try {
         await http.post(
           Uri.parse(_urlInsert),
@@ -542,15 +383,12 @@ class _FitnessDashboardState extends State<FitnessDashboard>
   void _scheduleSyncToServer(int userId) {
     if (userId <= 0) return;
 
-    // Cancel existing timer
     _syncTimer?.cancel();
 
-    // Create new timer that runs every 10 seconds
     _syncTimer = Timer.periodic(Duration(seconds: 10), (_) async {
       await _syncNowToServer(userId);
     });
 
-    // Do immediate sync
     _syncNowToServer(userId);
   }
 
@@ -558,22 +396,18 @@ class _FitnessDashboardState extends State<FitnessDashboard>
     try {
       final prefs = await SharedPreferences.getInstance();
 
-      // Check if it's a new day
       final String today = DateTime.now().toIso8601String().substring(0, 10);
       final String lastDate = prefs.getString('last_step_date') ?? today;
 
       if (lastDate != today) {
-        // Don't sync if day changed - let the reset handler deal with it
         return;
       }
 
-      // Get current values
       final int localSteps = stepCount;
       final double localCalories = caloriesBurned;
       final int localActive = activeMinutes;
       final double distance = calculateDistance(localSteps);
 
-      // Prepare request
       final response = await http
           .post(
             Uri.parse(_urlInsert),
@@ -591,7 +425,6 @@ class _FitnessDashboardState extends State<FitnessDashboard>
       if (response.statusCode == 200) {
         _lastSynced = DateTime.now();
 
-        // Parse response to get activity ID
         try {
           final Map<String, dynamic> data = json.decode(response.body);
           if (data['id'] != null) {
@@ -708,11 +541,9 @@ class _FitnessDashboardState extends State<FitnessDashboard>
     final userId = prefs.getInt('user_id') ?? -1;
     final String todayStr = DateTime.now().toIso8601String().substring(0, 10);
 
-    // Check if day changed since last run
     final String savedDate = prefs.getString('last_step_date') ?? todayStr;
 
     if (savedDate != todayStr) {
-      // New day - reset everything
       final int raw = prefs.getInt('raw_steps') ?? 0;
       await prefs.setInt(_prefKey('steps_base', userId), raw);
       await prefs.setString('last_step_date', todayStr);
@@ -721,7 +552,6 @@ class _FitnessDashboardState extends State<FitnessDashboard>
       await prefs.setInt(_prefKey('active_value', userId), 0);
       await prefs.remove(_prefKey('activity_id', userId));
 
-      // Insert initial record for today
       if (userId > 0) {
         await http.post(
           Uri.parse(_urlInsert),
@@ -737,7 +567,6 @@ class _FitnessDashboardState extends State<FitnessDashboard>
       }
     }
 
-    // Load saved values
     final savedSteps = prefs.getInt(_prefKey('steps_value', userId)) ?? 0;
     final savedBase = prefs.getInt(_prefKey('steps_base', userId)) ?? 0;
     final savedCalories =
@@ -754,7 +583,6 @@ class _FitnessDashboardState extends State<FitnessDashboard>
       });
     }
 
-    // Fetch server data for today
     if (userId > 0) {
       await _fetchTodayActivityFromServerAndMerge();
     }
@@ -774,7 +602,7 @@ class _FitnessDashboardState extends State<FitnessDashboard>
     const workoutsColor = Color(0xFFA78BFA);
 
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: Colors.grey[100],
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0.5,
