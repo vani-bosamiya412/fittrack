@@ -1,5 +1,5 @@
+import 'package:fittrack/screens/splash_screen/splash_screen.dart';
 import 'package:flutter/material.dart';
-import 'features/Splash_screen/splash_screen.dart';
 
 void main() {
   runApp(MyApp());

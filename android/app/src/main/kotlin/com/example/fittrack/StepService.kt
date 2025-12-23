@@ -29,12 +29,10 @@ class StepService : Service(), SensorEventListener {
         }
     }
 
-    // SERVICE STAYS ALIVE WHEN APP IS REMOVED FROM RECENTS
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         return START_STICKY
     }
 
-    // 🚀 ADD THIS EXACT METHOD HERE ↓↓↓
     override fun onTaskRemoved(rootIntent: Intent?) {
         val restartServiceIntent = Intent(applicationContext, StepService::class.java)
 
@@ -46,7 +44,6 @@ class StepService : Service(), SensorEventListener {
 
         super.onTaskRemoved(rootIntent)
     }
-    // 🚀 END OF ADDED METHOD
 
     private fun startStepTrackingNotification() {
         val channelId = "step_tracking_channel"

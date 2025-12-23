@@ -566,8 +566,14 @@ class _FitnessDashboardState extends State<FitnessDashboard>
       }
     }
 
+    final raw = prefs.getInt('raw_steps') ?? 0;
+
+    if (!prefs.containsKey(_prefKey('steps_base', userId))) {
+      await prefs.setInt(_prefKey('steps_base', userId), raw);
+    }
+
     final savedSteps = prefs.getInt(_prefKey('steps_value', userId)) ?? 0;
-    final savedBase = prefs.getInt(_prefKey('steps_base', userId)) ?? 0;
+    final savedBase = prefs.getInt(_prefKey('steps_base', userId)) ?? raw;
     final savedCalories =
         prefs.getDouble(_prefKey('calories_value', userId)) ?? 0.0;
     final savedActive = prefs.getInt(_prefKey('active_value', userId)) ?? 0;
