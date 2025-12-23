@@ -89,21 +89,6 @@ class _FitnessDashboardState extends State<FitnessDashboard>
     super.dispose();
   }
 
-  Future<void> _ensureBaseInitialized(
-      SharedPreferences prefs,
-      int userId,
-      int rawSteps,
-      ) async {
-    final baseKey = _prefKey('steps_base', userId);
-
-    if (!prefs.containsKey(baseKey)) {
-      await prefs.setInt(baseKey, rawSteps);
-      await prefs.setInt(_prefKey('steps_value', userId), 0);
-      await prefs.setDouble(_prefKey('calories_value', userId), 0.0);
-      await prefs.setInt(_prefKey('active_value', userId), 0);
-    }
-  }
-
   Future<void> _startStepServiceIfNeeded() async {
     try {
       await _platform.invokeMethod("startStepService");
@@ -189,7 +174,6 @@ class _FitnessDashboardState extends State<FitnessDashboard>
 
         final prefs = await SharedPreferences.getInstance();
         final userId = prefs.getInt('user_id') ?? -1;
-        await _ensureBaseInitialized(prefs, userId, raw);
 
         final todayKey = _todayKey();
         await _applyRawStepsSafely(
@@ -241,11 +225,13 @@ class _FitnessDashboardState extends State<FitnessDashboard>
   }
 
   Future<void> _applyRawStepsSafely(
-      int rawSteps,
-      SharedPreferences prefs, {
-        required int userId,
-        required String todayKey,
-      }) async {
+    int rawSteps,
+    SharedPreferences prefs, {
+    required int userId,
+    required String todayKey,
+  }) async {
+    await prefs.setInt('raw_steps', rawSteps);
+
     if (rawSteps > 0) {
       await prefs.setInt('raw_steps', rawSteps);
     } else {
@@ -255,13 +241,14 @@ class _FitnessDashboardState extends State<FitnessDashboard>
     final String lastSavedDate = prefs.getString('last_step_date') ?? todayKey;
 
     if (lastSavedDate != todayKey) {
-      if (kDebugMode) print("DATE CHANGE DETECTED: $lastSavedDate -> $todayKey");
+      if (kDebugMode) {
+        print("DATE CHANGE DETECTED: $lastSavedDate -> $todayKey");
+      }
 
       await _finalizeYesterdayOnServer(userId, lastSavedDate);
 
       await prefs.setInt(_prefKey('steps_base', userId), rawSteps);
       await prefs.setString('last_step_date', todayKey);
-
       await prefs.setInt(_prefKey('steps_value', userId), 0);
       await prefs.setDouble(_prefKey('calories_value', userId), 0.0);
       await prefs.setInt(_prefKey('active_value', userId), 0);
@@ -276,21 +263,42 @@ class _FitnessDashboardState extends State<FitnessDashboard>
           distanceKm = 0.0;
         });
       }
+
+      if (userId > 0) {
+        try {
+          await http.post(
+            Uri.parse(_urlInsert),
+            body: {
+              'user_id': userId.toString(),
+              'steps': '0',
+              'distance': '0',
+              'duration': '0',
+              'calories': '0',
+              'activity_date': todayKey,
+            },
+          );
+        } catch (e) {
+          if (kDebugMode) print("Failed to create new day record: $e");
+        }
+      }
       return;
     }
 
     int base = prefs.getInt(_prefKey('steps_base', userId)) ?? rawSteps;
 
     if (rawSteps < base) {
-      await prefs.setInt(_prefKey('steps_base', userId), rawSteps);
       base = rawSteps;
+      await prefs.setInt(_prefKey('steps_base', userId), base);
     }
 
     int todaySteps = rawSteps - base;
     if (todaySteps < 0) todaySteps = 0;
 
     final int newActiveMinutes = calculateMoveMinutes(todaySteps);
-    final double newCaloriesBurned = calculateCalories(todaySteps, newActiveMinutes);
+    final double newCaloriesBurned = calculateCalories(
+      todaySteps,
+      newActiveMinutes,
+    );
     final double newDistanceKm = calculateDistance(todaySteps);
 
     if (todaySteps != stepCount) {
@@ -304,7 +312,10 @@ class _FitnessDashboardState extends State<FitnessDashboard>
       }
 
       await prefs.setInt(_prefKey('steps_value', userId), todaySteps);
-      await prefs.setDouble(_prefKey('calories_value', userId), newCaloriesBurned);
+      await prefs.setDouble(
+        _prefKey('calories_value', userId),
+        newCaloriesBurned,
+      );
       await prefs.setInt(_prefKey('active_value', userId), newActiveMinutes);
 
       _scheduleSyncToServer(userId);
@@ -377,15 +388,18 @@ class _FitnessDashboardState extends State<FitnessDashboard>
   }
 
   void _scheduleSyncToServer(int userId) {
-    if (_syncTimer != null) return;
-    _syncTimer = Timer.periodic(
-      const Duration(seconds: 15),
-          (_) => _syncNowToServer(userId),
-    );
+    if (userId <= 0) return;
+
+    _syncTimer?.cancel();
+
+    _syncTimer = Timer.periodic(Duration(seconds: 10), (_) async {
+      await _syncNowToServer(userId);
+    });
+
+    _syncNowToServer(userId);
   }
 
   Future<void> _syncNowToServer(int userId) async {
-    if (stepCount == 0 && caloriesBurned == 0) return;
     try {
       final prefs = await SharedPreferences.getInstance();
 
@@ -534,42 +548,93 @@ class _FitnessDashboardState extends State<FitnessDashboard>
     final userId = prefs.getInt('user_id') ?? -1;
     final String todayStr = DateTime.now().toIso8601String().substring(0, 10);
 
-    final String savedDate = prefs.getString('last_step_date') ?? todayStr;
+    final String savedDate = prefs.getString('last_step_date') ?? "";
+
+    int currentRawSteps = 0;
+    try {
+      final dynamic result = await _platform.invokeMethod("getRawSteps");
+      if (result is int) {
+        currentRawSteps = result;
+      } else if (result is String) {
+        currentRawSteps = int.tryParse(result) ?? 0;
+      }
+    } catch (e) {
+      currentRawSteps = prefs.getInt('raw_steps') ?? 0;
+    }
+
+    await prefs.setInt('raw_steps', currentRawSteps);
 
     if (savedDate != todayStr) {
-      final int raw = prefs.getInt('raw_steps') ?? 0;
-      await prefs.setInt(_prefKey('steps_base', userId), raw);
+      await prefs.setInt(_prefKey('steps_base', userId), currentRawSteps);
       await prefs.setString('last_step_date', todayStr);
       await prefs.setInt(_prefKey('steps_value', userId), 0);
       await prefs.setDouble(_prefKey('calories_value', userId), 0.0);
       await prefs.setInt(_prefKey('active_value', userId), 0);
       await prefs.remove(_prefKey('activity_id', userId));
-    }
 
-    final raw = prefs.getInt('raw_steps') ?? 0;
+      if (userId > 0) {
+        try {
+          await http.post(
+            Uri.parse(_urlInsert),
+            body: {
+              'user_id': userId.toString(),
+              'steps': '0',
+              'distance': '0',
+              'duration': '0',
+              'calories': '0',
+              'activity_date': todayStr,
+            },
+          );
+        } catch (e) {
+          if (kDebugMode) print("Failed to init server record: $e");
+        }
+      }
 
-    if (!prefs.containsKey(_prefKey('steps_base', userId))) {
-      await prefs.setInt(_prefKey('steps_base', userId), raw);
-    }
+      if (mounted) {
+        setState(() {
+          stepCount = 0;
+          baseSteps = currentRawSteps;
+          caloriesBurned = 0.0;
+          activeMinutes = 0;
+          distanceKm = 0.0;
+        });
+      }
+    } else {
+      final savedBase =
+          prefs.getInt(_prefKey('steps_base', userId)) ?? currentRawSteps;
+      final savedSteps = prefs.getInt(_prefKey('steps_value', userId)) ?? 0;
+      final savedCalories =
+          prefs.getDouble(_prefKey('calories_value', userId)) ?? 0.0;
+      final savedActive = prefs.getInt(_prefKey('active_value', userId)) ?? 0;
 
-    final savedSteps = prefs.getInt(_prefKey('steps_value', userId)) ?? 0;
-    final savedBase = prefs.getInt(_prefKey('steps_base', userId)) ?? raw;
-    final savedCalories =
-        prefs.getDouble(_prefKey('calories_value', userId)) ?? 0.0;
-    final savedActive = prefs.getInt(_prefKey('active_value', userId)) ?? 0;
+      int actualBase = savedBase;
+      if (currentRawSteps < savedBase) {
+        actualBase = currentRawSteps;
+        await prefs.setInt(_prefKey('steps_base', userId), actualBase);
+      }
 
-    if (mounted) {
-      setState(() {
-        stepCount = savedSteps;
-        baseSteps = savedBase;
-        caloriesBurned = savedCalories;
-        activeMinutes = savedActive;
-        distanceKm = calculateDistance(savedSteps);
-      });
-    }
+      int todaySteps = currentRawSteps - actualBase;
+      if (todaySteps < 0) todaySteps = 0;
 
-    if (userId > 0) {
-      await _fetchTodayActivityFromServerAndMerge();
+      final displaySteps = todaySteps > savedSteps ? todaySteps : savedSteps;
+
+      if (mounted) {
+        setState(() {
+          baseSteps = actualBase;
+          stepCount = displaySteps;
+          caloriesBurned = savedCalories;
+          activeMinutes = savedActive;
+          distanceKm = calculateDistance(displaySteps);
+        });
+      }
+
+      await prefs.setInt(_prefKey('steps_value', userId), displaySteps);
+      await prefs.setDouble(_prefKey('calories_value', userId), caloriesBurned);
+      await prefs.setInt(_prefKey('active_value', userId), activeMinutes);
+
+      if (userId > 0) {
+        await _fetchTodayActivityFromServerAndMerge();
+      }
     }
   }
 
