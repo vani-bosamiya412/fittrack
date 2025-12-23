@@ -79,25 +79,6 @@ class _FitnessDashboardState extends State<FitnessDashboard>
       _startStepServiceIfNeeded();
       _fetchTodayActivityFromServerAndMerge();
     }
-    if (state == AppLifecycleState.resumed) {
-      final prefs = await SharedPreferences.getInstance();
-      final today = _todayKey();
-      final last = prefs.getString('last_step_date');
-
-      if (last != today) {
-        final raw = prefs.getInt('raw_steps') ?? 0;
-        await prefs.setInt(
-          _prefKey('steps_base', prefs.getInt('user_id')!),
-          raw,
-        );
-        await prefs.setString('last_step_date', today);
-
-        setState(() {
-          baseSteps = raw;
-          stepCount = 0;
-        });
-      }
-    }
   }
 
   @override
@@ -106,6 +87,21 @@ class _FitnessDashboardState extends State<FitnessDashboard>
     _rawReaderTimer?.cancel();
     _syncTimer?.cancel();
     super.dispose();
+  }
+
+  Future<void> _ensureBaseInitialized(
+      SharedPreferences prefs,
+      int userId,
+      int rawSteps,
+      ) async {
+    final baseKey = _prefKey('steps_base', userId);
+
+    if (!prefs.containsKey(baseKey)) {
+      await prefs.setInt(baseKey, rawSteps);
+      await prefs.setInt(_prefKey('steps_value', userId), 0);
+      await prefs.setDouble(_prefKey('calories_value', userId), 0.0);
+      await prefs.setInt(_prefKey('active_value', userId), 0);
+    }
   }
 
   Future<void> _startStepServiceIfNeeded() async {
@@ -193,6 +189,7 @@ class _FitnessDashboardState extends State<FitnessDashboard>
 
         final prefs = await SharedPreferences.getInstance();
         final userId = prefs.getInt('user_id') ?? -1;
+        await _ensureBaseInitialized(prefs, userId, raw);
 
         final todayKey = _todayKey();
         await _applyRawStepsSafely(
@@ -285,8 +282,8 @@ class _FitnessDashboardState extends State<FitnessDashboard>
     int base = prefs.getInt(_prefKey('steps_base', userId)) ?? rawSteps;
 
     if (rawSteps < base) {
+      await prefs.setInt(_prefKey('steps_base', userId), rawSteps);
       base = rawSteps;
-      await prefs.setInt(_prefKey('steps_base', userId), base);
     }
 
     int todaySteps = rawSteps - base;
@@ -380,18 +377,15 @@ class _FitnessDashboardState extends State<FitnessDashboard>
   }
 
   void _scheduleSyncToServer(int userId) {
-    if (userId <= 0) return;
-
-    _syncTimer?.cancel();
-
-    _syncTimer = Timer.periodic(Duration(seconds: 10), (_) async {
-      await _syncNowToServer(userId);
-    });
-
-    _syncNowToServer(userId);
+    if (_syncTimer != null) return;
+    _syncTimer = Timer.periodic(
+      const Duration(seconds: 15),
+          (_) => _syncNowToServer(userId),
+    );
   }
 
   Future<void> _syncNowToServer(int userId) async {
+    if (stepCount == 0 && caloriesBurned == 0) return;
     try {
       final prefs = await SharedPreferences.getInstance();
 
@@ -550,20 +544,6 @@ class _FitnessDashboardState extends State<FitnessDashboard>
       await prefs.setDouble(_prefKey('calories_value', userId), 0.0);
       await prefs.setInt(_prefKey('active_value', userId), 0);
       await prefs.remove(_prefKey('activity_id', userId));
-
-      if (userId > 0) {
-        await http.post(
-          Uri.parse(_urlInsert),
-          body: {
-            'user_id': userId.toString(),
-            'steps': '0',
-            'distance': '0',
-            'duration': '0',
-            'calories': '0',
-            'activity_date': todayStr,
-          },
-        );
-      }
     }
 
     final raw = prefs.getInt('raw_steps') ?? 0;
