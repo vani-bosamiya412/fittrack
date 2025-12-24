@@ -244,11 +244,11 @@ class _FitnessDashboardState extends State<FitnessDashboard>
   }
 
   Future<void> _applyRawStepsSafely(
-      int rawSteps,
-      SharedPreferences prefs, {
-        required int userId,
-        required String todayKey,
-      }) async {
+    int rawSteps,
+    SharedPreferences prefs, {
+    required int userId,
+    required String todayKey,
+  }) async {
     if (rawSteps > 0) {
       await prefs.setInt('raw_steps', rawSteps);
     } else {
@@ -258,7 +258,9 @@ class _FitnessDashboardState extends State<FitnessDashboard>
     final String lastSavedDate = prefs.getString('last_step_date') ?? todayKey;
 
     if (lastSavedDate != todayKey) {
-      if (kDebugMode) print("DATE CHANGE DETECTED: $lastSavedDate -> $todayKey");
+      if (kDebugMode) {
+        print("DATE CHANGE DETECTED: $lastSavedDate -> $todayKey");
+      }
 
       await _finalizeYesterdayOnServer(userId, lastSavedDate);
 
@@ -293,7 +295,10 @@ class _FitnessDashboardState extends State<FitnessDashboard>
     if (todaySteps < 0) todaySteps = 0;
 
     final int newActiveMinutes = calculateMoveMinutes(todaySteps);
-    final double newCaloriesBurned = calculateCalories(todaySteps, newActiveMinutes);
+    final double newCaloriesBurned = calculateCalories(
+      todaySteps,
+      newActiveMinutes,
+    );
     final double newDistanceKm = calculateDistance(todaySteps);
 
     if (todaySteps != stepCount) {
@@ -307,7 +312,10 @@ class _FitnessDashboardState extends State<FitnessDashboard>
       }
 
       await prefs.setInt(_prefKey('steps_value', userId), todaySteps);
-      await prefs.setDouble(_prefKey('calories_value', userId), newCaloriesBurned);
+      await prefs.setDouble(
+        _prefKey('calories_value', userId),
+        newCaloriesBurned,
+      );
       await prefs.setInt(_prefKey('active_value', userId), newActiveMinutes);
 
       _scheduleSyncToServer(userId);
@@ -315,9 +323,9 @@ class _FitnessDashboardState extends State<FitnessDashboard>
   }
 
   Future<void> _finalizeYesterdayOnServer(
-      int userId,
-      String dateToFinalize,
-      ) async {
+    int userId,
+    String dateToFinalize,
+  ) async {
     if (userId <= 0) return;
 
     final prefs = await SharedPreferences.getInstance();
@@ -409,16 +417,16 @@ class _FitnessDashboardState extends State<FitnessDashboard>
 
       final response = await http
           .post(
-        Uri.parse(_urlInsert),
-        body: {
-          'user_id': userId.toString(),
-          'steps': localSteps.toString(),
-          'distance': distance.toStringAsFixed(2),
-          'duration': localActive.toString(),
-          'calories': localCalories.toStringAsFixed(1),
-          'activity_date': today,
-        },
-      )
+            Uri.parse(_urlInsert),
+            body: {
+              'user_id': userId.toString(),
+              'steps': localSteps.toString(),
+              'distance': distance.toStringAsFixed(2),
+              'duration': localActive.toString(),
+              'calories': localCalories.toStringAsFixed(1),
+              'activity_date': today,
+            },
+          )
           .timeout(Duration(seconds: 10));
 
       if (response.statusCode == 200) {
@@ -566,14 +574,8 @@ class _FitnessDashboardState extends State<FitnessDashboard>
       }
     }
 
-    final raw = prefs.getInt('raw_steps') ?? 0;
-
-    if (!prefs.containsKey(_prefKey('steps_base', userId))) {
-      await prefs.setInt(_prefKey('steps_base', userId), raw);
-    }
-
     final savedSteps = prefs.getInt(_prefKey('steps_value', userId)) ?? 0;
-    final savedBase = prefs.getInt(_prefKey('steps_base', userId)) ?? raw;
+    final savedBase = prefs.getInt(_prefKey('steps_base', userId)) ?? 0;
     final savedCalories =
         prefs.getDouble(_prefKey('calories_value', userId)) ?? 0.0;
     final savedActive = prefs.getInt(_prefKey('active_value', userId)) ?? 0;
@@ -849,111 +851,111 @@ class _FitnessDashboardState extends State<FitnessDashboard>
               SizedBox(height: width * 0.03),
               isSuggestedLoading
                   ? Center(
-                child: CircularProgressIndicator(color: Colors.purple),
-              )
+                      child: CircularProgressIndicator(color: Colors.purple),
+                    )
                   : suggestedWorkout == null
                   ? Text("No suggestions available.")
                   : GestureDetector(
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => WorkoutDetailScreen(
-                      workoutId: int.parse(
-                        suggestedWorkout!['id'].toString(),
-                      ),
-                    ),
-                  ),
-                ),
-                child: Container(
-                  margin: const EdgeInsets.only(bottom: 20),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(18),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black12,
-                        blurRadius: 6,
-                        spreadRadius: 1,
-                      ),
-                    ],
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      SizedBox(
-                        height: width * 0.44,
-                        width: double.infinity,
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.vertical(
-                            top: Radius.circular(18),
-                          ),
-                          child: buildWorkoutThumbnail(
-                            suggestedWorkout!['video_url'] ?? "",
-                            width * 0.44,
-                            18,
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => WorkoutDetailScreen(
+                            workoutId: int.parse(
+                              suggestedWorkout!['id'].toString(),
+                            ),
                           ),
                         ),
                       ),
-                      Padding(
-                        padding: const EdgeInsets.all(12),
+                      child: Container(
+                        margin: const EdgeInsets.only(bottom: 20),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(18),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black12,
+                              blurRadius: 6,
+                              spreadRadius: 1,
+                            ),
+                          ],
+                        ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              suggestedWorkout!['title'],
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
+                            SizedBox(
+                              height: width * 0.44,
+                              width: double.infinity,
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.vertical(
+                                  top: Radius.circular(18),
+                                ),
+                                child: buildWorkoutThumbnail(
+                                  suggestedWorkout!['video_url'] ?? "",
+                                  width * 0.44,
+                                  18,
+                                ),
                               ),
                             ),
-                            SizedBox(height: 4),
-                            Text(
-                              suggestedWorkout!['description'] ?? "",
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: Colors.black87,
-                              ),
-                            ),
-                            SizedBox(height: 10),
-                            Row(
-                              children: [
-                                Icon(Icons.timer_outlined, size: 18),
-                                SizedBox(width: 5),
-                                Text(
-                                  "${suggestedWorkout!['duration']} min",
-                                ),
-                              ],
-                            ),
-                            SizedBox(height: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                color: _difficultyColor(
-                                  suggestedWorkout!['difficulty'],
-                                ),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Text(
-                                suggestedWorkout!['difficulty'],
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 12,
-                                ),
+                            Padding(
+                              padding: const EdgeInsets.all(12),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    suggestedWorkout!['title'],
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  SizedBox(height: 4),
+                                  Text(
+                                    suggestedWorkout!['description'] ?? "",
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      color: Colors.black87,
+                                    ),
+                                  ),
+                                  SizedBox(height: 10),
+                                  Row(
+                                    children: [
+                                      Icon(Icons.timer_outlined, size: 18),
+                                      SizedBox(width: 5),
+                                      Text(
+                                        "${suggestedWorkout!['duration']} min",
+                                      ),
+                                    ],
+                                  ),
+                                  SizedBox(height: 8),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 4,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: _difficultyColor(
+                                        suggestedWorkout!['difficulty'],
+                                      ),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Text(
+                                      suggestedWorkout!['difficulty'],
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           ],
                         ),
                       ),
-                    ],
-                  ),
-                ),
-              ),
+                    ),
 
               SizedBox(height: width * 0.03),
               Text(
@@ -1170,9 +1172,9 @@ class _FitnessDashboardState extends State<FitnessDashboard>
 
   bool isImage(String url) =>
       url.endsWith(".jpg") ||
-          url.endsWith(".jpeg") ||
-          url.endsWith(".png") ||
-          url.endsWith(".gif");
+      url.endsWith(".jpeg") ||
+      url.endsWith(".png") ||
+      url.endsWith(".gif");
 
   bool isVideo(String url) =>
       url.endsWith(".mp4") || url.endsWith(".mov") || url.endsWith(".avi");
